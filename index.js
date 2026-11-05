@@ -252,6 +252,164 @@ app.delete("/joined-events/:id", async (req, res) => {
   }
 });
 
+app.get("/my-events", async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email query parameter is required.",
+      });
+    }
+
+    const normalizedEmail = email.toString().toLowerCase().trim();
+
+    const myEvents = await eventsCol()
+      .find({ creatorEmail: normalizedEmail })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.json({ success: true, data: myEvents });
+  } catch (err) {
+    console.error("Error fetching my events:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch user created events.",
+    });
+  }
+});
+
+app.put("/events/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      title,
+      description,
+      eventType,
+      thumbnailURL,
+      location,
+      eventDate,
+      creatorEmail,
+    } = req.body;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid event ID." });
+    }
+
+    if (!creatorEmail) {
+      return res.status(400).json({
+        success: false,
+        message: "creatorEmail is required to verify ownership.",
+      });
+    }
+
+    const normalizedEmail = creatorEmail.toLowerCase().trim();
+    const existing = await eventsCol().findOne({ _id: new ObjectId(id) });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Event not found." });
+    }
+    if (existing.creatorEmail !== normalizedEmail) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: You are only allowed to update events created by you.",
+      });
+    }
+    if (!title || !description || !eventType || !location || !eventDate) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required: title, description, eventType, location, eventDate.",
+      });
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+    if (eventDate <= today) {
+      return res.status(400).json({
+        success: false,
+        message: "Event date must be in the future.",
+      });
+    }
+
+    const updateDoc = {
+      title: title.trim(),
+      description: description.trim(),
+      eventType,
+      thumbnailURL: thumbnailURL?.trim() || null,
+      location: location.trim(),
+      eventDate,
+      updatedAt: new Date(),
+    };
+
+    await eventsCol().updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updateDoc }
+    );
+    await joinedEventsCol().updateMany(
+      { eventId: id },
+      {
+        $set: {
+          eventTitle: updateDoc.title,
+          eventDate: updateDoc.eventDate,
+          eventType: updateDoc.eventType,
+          location: updateDoc.location,
+          thumbnailURL: updateDoc.thumbnailURL,
+        },
+      }
+    );
+
+    const updated = await eventsCol().findOne({ _id: new ObjectId(id) });
+
+    res.json({
+      success: true,
+      message: "Event updated successfully.",
+      data: updated,
+    });
+  } catch (err) {
+    console.error("Error updating event:", err);
+    res.status(500).json({ success: false, message: "Failed to update event." });
+  }
+});
+
+app.delete("/events/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const email = req.query.email || req.body?.creatorEmail;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid event ID." });
+    }
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Creator email is required to verify ownership.",
+      });
+    }
+
+    const normalizedEmail = email.toString().toLowerCase().trim();
+    const existing = await eventsCol().findOne({ _id: new ObjectId(id) });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Event not found." });
+    }
+
+    if (existing.creatorEmail !== normalizedEmail) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: You are only allowed to delete events created by you.",
+      });
+    }
+    await eventsCol().deleteOne({ _id: new ObjectId(id) });
+    await joinedEventsCol().deleteMany({ eventId: id });
+
+    res.json({
+      success: true,
+      message: "Event and associated participant records deleted successfully.",
+    });
+  } catch (err) {
+    console.error("Error deleting event:", err);
+    res.status(500).json({ success: false, message: "Failed to delete event." });
+  }
+});
 
 app.post("/events", async (req, res) => {
   try {
