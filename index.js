@@ -177,6 +177,81 @@ app.post("/events/:id/join", async (req, res) => {
   }
 });
 
+app.get("/joined-events", async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email query parameter is required.",
+      });
+    }
+
+    const normalizedEmail = email.toString().toLowerCase().trim();
+
+    const joinedEvents = await joinedEventsCol()
+      .find({ userEmail: normalizedEmail })
+      .sort({ eventDate: 1 })
+      .toArray();
+
+    res.json({ success: true, data: joinedEvents });
+  } catch (err) {
+    console.error("Error fetching joined events:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch joined events.",
+    });
+  }
+});
+
+app.delete("/joined-events/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email } = req.query;
+
+    if (!ObjectId.isValid(id) || !email) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid registration ID and email are required.",
+      });
+    }
+
+    const normalizedEmail = email.toString().toLowerCase().trim();
+
+    const record = await joinedEventsCol().findOne({
+      _id: new ObjectId(id),
+      userEmail: normalizedEmail,
+    });
+
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        message: "Joined event record not found or unauthorized.",
+      });
+    }
+
+    await joinedEventsCol().deleteOne({ _id: new ObjectId(id) });
+    if (record.eventId && ObjectId.isValid(record.eventId)) {
+      await eventsCol().updateOne(
+        { _id: new ObjectId(record.eventId), joinedCount: { $gt: 0 } },
+        { $inc: { joinedCount: -1 } }
+      );
+    }
+
+    res.json({
+      success: true,
+      message: "Successfully cancelled your event attendance.",
+    });
+  } catch (err) {
+    console.error("Error cancelling attendance:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to cancel attendance.",
+    });
+  }
+});
+
 
 app.post("/events", async (req, res) => {
   try {
