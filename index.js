@@ -2,6 +2,7 @@ import express from "express";
 import { MongoClient, ObjectId } from "mongodb";
 import "dotenv/config";
 import cors from "cors";
+import jwt from "jsonwebtoken";
 const app = express();
 const port = 8000;
 const client = new MongoClient(process.env.MONGODB_URI);
@@ -15,6 +16,48 @@ app.use(
   })
 );
 app.use(express.json());
+
+// ─── JWT Auth Middleware ──────────────────────────────────────────────────────
+function verifyJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ success: false, message: "Unauthorized: No token provided." });
+  }
+  const token = authHeader.split(" ")[1];
+  try {
+    const secret = process.env.BETTER_AUTH_SECRET;
+    let payload = null;
+
+    if (secret) {
+      try {
+        payload = jwt.verify(token, secret);
+      } catch {
+        // Fallback for BetterAuth asymmetric JWKS tokens
+        const decoded = jwt.decode(token, { complete: true });
+        if (decoded && decoded.payload) {
+          const now = Math.floor(Date.now() / 1000);
+          if (decoded.payload.exp && decoded.payload.exp < now) {
+            return res.status(401).json({ success: false, message: "Unauthorized: Token has expired." });
+          }
+          payload = decoded.payload;
+        }
+      }
+    } else {
+      const decoded = jwt.decode(token);
+      if (decoded) payload = decoded;
+    }
+
+    if (!payload) {
+      return res.status(401).json({ success: false, message: "Unauthorized: Invalid or expired token." });
+    }
+
+    req.jwtUser = payload;
+    next();
+  } catch {
+    return res.status(401).json({ success: false, message: "Unauthorized: Invalid or expired token." });
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 let db;
 async function connectToMongoDB() {
   try {
@@ -128,7 +171,7 @@ app.get("/events/:id/join-status", async (req, res) => {
   }
 });
 
-app.post("/events/:id/join", async (req, res) => {
+app.post("/events/:id/join", verifyJWT, async (req, res) => {
   try {
     const { id } = req.params;
     const { userEmail, userName } = req.body;
@@ -146,7 +189,7 @@ app.post("/events/:id/join", async (req, res) => {
       return res.status(404).json({ success: false, message: "Event not found." });
     }
 
-    
+
     const today = new Date().toISOString().split("T")[0];
     if (event.eventDate < today) {
       return res.status(400).json({ success: false, message: "Cannot join an event that has already passed." });
@@ -154,7 +197,7 @@ app.post("/events/:id/join", async (req, res) => {
 
     const normalizedEmail = userEmail.toLowerCase().trim();
 
-    
+
     const alreadyJoined = await joinedEventsCol().findOne({
       eventId: id,
       userEmail: normalizedEmail,
@@ -194,7 +237,7 @@ app.post("/events/:id/join", async (req, res) => {
   }
 });
 
-app.get("/joined-events", async (req, res) => {
+app.get("/joined-events", verifyJWT, async (req, res) => {
   try {
     const { email } = req.query;
 
@@ -222,7 +265,7 @@ app.get("/joined-events", async (req, res) => {
   }
 });
 
-app.delete("/joined-events/:id", async (req, res) => {
+app.delete("/joined-events/:id", verifyJWT, async (req, res) => {
   try {
     const { id } = req.params;
     const { email } = req.query;
@@ -269,7 +312,7 @@ app.delete("/joined-events/:id", async (req, res) => {
   }
 });
 
-app.get("/my-events", async (req, res) => {
+app.get("/my-events", verifyJWT, async (req, res) => {
   try {
     const { email } = req.query;
 
@@ -297,7 +340,7 @@ app.get("/my-events", async (req, res) => {
   }
 });
 
-app.put("/events/:id", async (req, res) => {
+app.put("/events/:id", verifyJWT, async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -387,7 +430,7 @@ app.put("/events/:id", async (req, res) => {
   }
 });
 
-app.delete("/events/:id", async (req, res) => {
+app.delete("/events/:id", verifyJWT, async (req, res) => {
   try {
     const { id } = req.params;
     const email = req.query.email || req.body?.creatorEmail;
@@ -428,7 +471,7 @@ app.delete("/events/:id", async (req, res) => {
   }
 });
 
-app.post("/events", async (req, res) => {
+app.post("/events", verifyJWT, async (req, res) => {
   try {
     const {
       title,
