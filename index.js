@@ -68,6 +68,23 @@ app.get("/events", async (req, res) => {
   }
 });
 
+app.get("/events/recent", async (_req, res) => {
+  try {
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
+    const events = await eventsCol()
+      .find({ eventDate: { $gte: today } })
+      .sort({ eventDate: 1 })
+      .limit(6)
+      .toArray();
+
+    res.json({ success: true, data: events });
+  } catch (err) {
+    console.error("Error fetching recent events:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch recent events." });
+  }
+});
+
 
 app.get("/events/:id", async (req, res) => {
   try {
