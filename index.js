@@ -10,14 +10,16 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000",
-      process.env.FRONTEND_URL,
+      process.env.CLIENT_URL,
     ].filter(Boolean),
     credentials: true,
   })
 );
 app.use(express.json());
+app.get("/", (req, res) => {
+  res.send("Work Successfully");
+});
 
-// ─── JWT Auth Middleware ──────────────────────────────────────────────────────
 function verifyJWT(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -32,7 +34,6 @@ function verifyJWT(req, res, next) {
       try {
         payload = jwt.verify(token, secret);
       } catch {
-        // Fallback for BetterAuth asymmetric JWKS tokens
         const decoded = jwt.decode(token, { complete: true });
         if (decoded && decoded.payload) {
           const now = Math.floor(Date.now() / 1000);
@@ -57,7 +58,6 @@ function verifyJWT(req, res, next) {
     return res.status(401).json({ success: false, message: "Unauthorized: Invalid or expired token." });
   }
 }
-// ─────────────────────────────────────────────────────────────────────────────
 let db;
 async function connectToMongoDB() {
   try {
