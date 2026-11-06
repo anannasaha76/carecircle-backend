@@ -482,6 +482,7 @@ app.post("/events", verifyJWT, async (req, res) => {
       eventDate,
       creatorEmail,
       creatorName,
+      creatorImage,
     } = req.body;
 
     if (!title || !description || !eventType || !location || !eventDate || !creatorEmail) {
@@ -507,6 +508,7 @@ app.post("/events", verifyJWT, async (req, res) => {
       eventDate,
       creatorEmail: creatorEmail.toLowerCase().trim(),
       creatorName: creatorName?.trim() || null,
+      creatorImage: creatorImage?.trim() || null,
       joinedCount: 0,
       createdAt: new Date(),
     };
